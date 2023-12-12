@@ -2,6 +2,8 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset
 
+from TTS.utils.audio.numpy_transforms import mulaw_encode, quantize
+
 
 class WaveRNNDataset(Dataset):
     """
@@ -12,7 +14,6 @@ class WaveRNNDataset(Dataset):
     def __init__(
         self, ap, items, seq_len, hop_len, pad, mode, mulaw, is_training=True, verbose=False, return_segments=True
     ):
-
         super().__init__()
         self.ap = ap
         self.compute_feat = not isinstance(items[0], (tuple, list))
@@ -52,7 +53,6 @@ class WaveRNNDataset(Dataset):
         else compute it on the fly
         """
         if self.compute_feat:
-
             wavpath = self.item_list[index]
             audio = self.ap.load_wav(wavpath)
             if self.return_segments:
@@ -68,13 +68,14 @@ class WaveRNNDataset(Dataset):
                 x_input = audio
             elif isinstance(self.mode, int):
                 x_input = (
-                    self.ap.mulaw_encode(audio, qc=self.mode) if self.mulaw else self.ap.quantize(audio, bits=self.mode)
+                    mulaw_encode(wav=audio, mulaw_qc=self.mode)
+                    if self.mulaw
+                    else quantize(x=audio, quantize_bits=self.mode)
                 )
             else:
                 raise RuntimeError("Unknown dataset mode - ", self.mode)
 
         else:
-
             wavpath, feat_path = self.item_list[index]
             mel = np.load(feat_path.replace("/quant/", "/mel/"))
 
@@ -111,7 +112,7 @@ class WaveRNNDataset(Dataset):
         elif isinstance(self.mode, int):
             coarse = np.stack(coarse).astype(np.int64)
             coarse = torch.LongTensor(coarse)
-            x_input = 2 * coarse[:, : self.seq_len].float() / (2 ** self.mode - 1.0) - 1.0
+            x_input = 2 * coarse[:, : self.seq_len].float() / (2**self.mode - 1.0) - 1.0
         y_coarse = coarse[:, 1:]
         mels = torch.FloatTensor(mels)
         return x_input, mels, y_coarse

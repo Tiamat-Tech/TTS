@@ -89,8 +89,8 @@ class SpeedySpeechConfig(BaseTTSConfig):
         binary_loss_alpha (float):
             Weight for the binary loss. If set 0, disables the binary loss. Defaults to 1.0.
 
-        binary_align_loss_start_step (int):
-            Start binary alignment loss after this many steps. Defaults to 20000.
+        binary_loss_warmup_epochs (float):
+            Number of epochs to gradually increase the binary loss impact. Defaults to 150.
 
         min_seq_len (int):
             Minimum input sequence length to be used at training.
@@ -103,26 +103,28 @@ class SpeedySpeechConfig(BaseTTSConfig):
     base_model: str = "forward_tts"
 
     # set model args as SpeedySpeech
-    model_args: ForwardTTSArgs = ForwardTTSArgs(
-        use_pitch=False,
-        encoder_type="residual_conv_bn",
-        encoder_params={
-            "kernel_size": 4,
-            "dilations": 4 * [1, 2, 4] + [1],
-            "num_conv_blocks": 2,
-            "num_res_blocks": 13,
-        },
-        decoder_type="residual_conv_bn",
-        decoder_params={
-            "kernel_size": 4,
-            "dilations": 4 * [1, 2, 4, 8] + [1],
-            "num_conv_blocks": 2,
-            "num_res_blocks": 17,
-        },
-        out_channels=80,
-        hidden_channels=128,
-        positional_encoding=True,
-        detach_duration_predictor=True,
+    model_args: ForwardTTSArgs = field(
+        default_factory=lambda: ForwardTTSArgs(
+            use_pitch=False,
+            encoder_type="residual_conv_bn",
+            encoder_params={
+                "kernel_size": 4,
+                "dilations": 4 * [1, 2, 4] + [1],
+                "num_conv_blocks": 2,
+                "num_res_blocks": 13,
+            },
+            decoder_type="residual_conv_bn",
+            decoder_params={
+                "kernel_size": 4,
+                "dilations": 4 * [1, 2, 4, 8] + [1],
+                "num_conv_blocks": 2,
+                "num_res_blocks": 17,
+            },
+            out_channels=80,
+            hidden_channels=128,
+            positional_encoding=True,
+            detach_duration_predictor=True,
+        )
     )
 
     # multi-speaker settings
@@ -150,7 +152,7 @@ class SpeedySpeechConfig(BaseTTSConfig):
     spec_loss_alpha: float = 1.0
     aligner_loss_alpha: float = 1.0
     binary_align_loss_alpha: float = 0.3
-    binary_align_loss_start_step: int = 50000
+    binary_loss_warmup_epochs: int = 150
 
     # overrides
     min_seq_len: int = 13

@@ -20,14 +20,16 @@
     :caption: Using 🐸TTS
 
     inference
+    docker_images
     implementing_a_new_model
+    implementing_a_new_language_frontend
     training_a_model
     finetuning
     configuration
     formatting_your_dataset
     what_makes_a_good_dataset
     tts_datasets
-    converting_torch_to_tf
+    marytts
 
 .. toctree::
     :maxdepth: 2
@@ -48,10 +50,13 @@
     models/vits.md
     models/forward_tts.md
     models/tacotron1-2.md
+    models/overflow.md
+    models/tortoise.md
+    models/bark.md
+    models/xtts.md
 
 .. toctree::
     :maxdepth: 2
     :caption: `vocoder` Models
 
 ```
-

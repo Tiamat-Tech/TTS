@@ -7,6 +7,7 @@ from coqpit import Coqpit
 from tqdm import tqdm
 
 from TTS.utils.audio import AudioProcessor
+from TTS.utils.audio.numpy_transforms import mulaw_encode, quantize
 
 
 def preprocess_wav_files(out_path: str, config: Coqpit, ap: AudioProcessor):
@@ -29,12 +30,16 @@ def preprocess_wav_files(out_path: str, config: Coqpit, ap: AudioProcessor):
         mel = ap.melspectrogram(y)
         np.save(mel_path, mel)
         if isinstance(config.mode, int):
-            quant = ap.mulaw_encode(y, qc=config.mode) if config.model_args.mulaw else ap.quantize(y, bits=config.mode)
+            quant = (
+                mulaw_encode(wav=y, mulaw_qc=config.mode)
+                if config.model_args.mulaw
+                else quantize(x=y, quantize_bits=config.mode)
+            )
             np.save(quant_path, quant)
 
 
-def find_wav_files(data_path):
-    wav_paths = glob.glob(os.path.join(data_path, "**", "*.wav"), recursive=True)
+def find_wav_files(data_path, file_ext="wav"):
+    wav_paths = glob.glob(os.path.join(data_path, "**", f"*.{file_ext}"), recursive=True)
     return wav_paths
 
 
@@ -43,8 +48,9 @@ def find_feat_files(data_path):
     return feat_paths
 
 
-def load_wav_data(data_path, eval_split_size):
-    wav_paths = find_wav_files(data_path)
+def load_wav_data(data_path, eval_split_size, file_ext="wav"):
+    wav_paths = find_wav_files(data_path, file_ext=file_ext)
+    assert len(wav_paths) > 0, f" [!] {data_path} is empty."
     np.random.seed(0)
     np.random.shuffle(wav_paths)
     return wav_paths[:eval_split_size], wav_paths[eval_split_size:]

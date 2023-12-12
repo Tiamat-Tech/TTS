@@ -1,11 +1,11 @@
 from coqpit import Coqpit
 
-from TTS.model import BaseModel
+from TTS.model import BaseTrainerModel
 
 # pylint: skip-file
 
 
-class BaseVocoder(BaseModel):
+class BaseVocoder(BaseTrainerModel):
     """Base `vocoder` class. Every new `vocoder` model must inherit this.
 
     It defines `vocoder` specific functions on top of `Model`.
@@ -18,8 +18,11 @@ class BaseVocoder(BaseModel):
         - 1D tensors `batch x 1`
     """
 
+    MODEL_TYPE = "vocoder"
+
     def __init__(self, config):
-        super().__init__(config)
+        super().__init__()
+        self._set_model_args(config)
 
     def _set_model_args(self, config: Coqpit):
         """Setup model args based on the config type.

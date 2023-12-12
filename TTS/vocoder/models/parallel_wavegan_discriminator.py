@@ -2,6 +2,7 @@ import math
 
 import torch
 from torch import nn
+from torch.nn.utils.parametrize import remove_parametrizations
 
 from TTS.vocoder.layers.parallel_wavegan import ResidualBlock
 
@@ -35,7 +36,7 @@ class ParallelWaveganDiscriminator(nn.Module):
             if i == 0:
                 dilation = 1
             else:
-                dilation = i if dilation_factor == 1 else dilation_factor ** i
+                dilation = i if dilation_factor == 1 else dilation_factor**i
                 conv_in_channels = conv_channels
             padding = (kernel_size - 1) // 2 * dilation
             conv_layer = [
@@ -68,7 +69,7 @@ class ParallelWaveganDiscriminator(nn.Module):
     def apply_weight_norm(self):
         def _apply_weight_norm(m):
             if isinstance(m, (torch.nn.Conv1d, torch.nn.Conv2d)):
-                torch.nn.utils.weight_norm(m)
+                torch.nn.utils.parametrizations.weight_norm(m)
 
         self.apply(_apply_weight_norm)
 
@@ -76,7 +77,7 @@ class ParallelWaveganDiscriminator(nn.Module):
         def _remove_weight_norm(m):
             try:
                 # print(f"Weight norm is removed from {m}.")
-                nn.utils.remove_weight_norm(m)
+                remove_parametrizations(m, "weight")
             except ValueError:  # this module didn't have weight norm
                 return
 
@@ -171,7 +172,7 @@ class ResidualParallelWaveganDiscriminator(nn.Module):
     def apply_weight_norm(self):
         def _apply_weight_norm(m):
             if isinstance(m, (torch.nn.Conv1d, torch.nn.Conv2d)):
-                torch.nn.utils.weight_norm(m)
+                torch.nn.utils.parametrizations.weight_norm(m)
 
         self.apply(_apply_weight_norm)
 
@@ -179,7 +180,7 @@ class ResidualParallelWaveganDiscriminator(nn.Module):
         def _remove_weight_norm(m):
             try:
                 print(f"Weight norm is removed from {m}.")
-                nn.utils.remove_weight_norm(m)
+                remove_parametrizations(m, "weight")
             except ValueError:  # this module didn't have weight norm
                 return
 

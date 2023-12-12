@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from scipy.stats import betabinom
 from torch.nn import functional as F
 
 try:
@@ -50,48 +51,72 @@ def sequence_mask(sequence_length, max_len=None):
         - mask: :math:`[B, T_max]`
     """
     if max_len is None:
-        max_len = sequence_length.data.max()
+        max_len = sequence_length.max()
     seq_range = torch.arange(max_len, dtype=sequence_length.dtype, device=sequence_length.device)
     # B x T_max
-    mask = seq_range.unsqueeze(0) < sequence_length.unsqueeze(1)
-    return mask
+    return seq_range.unsqueeze(0) < sequence_length.unsqueeze(1)
 
 
-def segment(x: torch.tensor, segment_indices: torch.tensor, segment_size=4):
+def segment(x: torch.tensor, segment_indices: torch.tensor, segment_size=4, pad_short=False):
     """Segment each sample in a batch based on the provided segment indices
 
     Args:
         x (torch.tensor): Input tensor.
         segment_indices (torch.tensor): Segment indices.
         segment_size (int): Expected output segment size.
+        pad_short (bool): Pad the end of input tensor with zeros if shorter than the segment size.
     """
+    # pad the input tensor if it is shorter than the segment size
+    if pad_short and x.shape[-1] < segment_size:
+        x = torch.nn.functional.pad(x, (0, segment_size - x.size(2)))
+
     segments = torch.zeros_like(x[:, :, :segment_size])
+
     for i in range(x.size(0)):
         index_start = segment_indices[i]
         index_end = index_start + segment_size
-        segments[i] = x[i, :, index_start:index_end]
+        x_i = x[i]
+        if pad_short and index_end >= x.size(2):
+            # pad the sample if it is shorter than the segment size
+            x_i = torch.nn.functional.pad(x_i, (0, (index_end + 1) - x.size(2)))
+        segments[i] = x_i[:, index_start:index_end]
     return segments
 
 
-def rand_segments(x: torch.tensor, x_lengths: torch.tensor = None, segment_size=4):
+def rand_segments(
+    x: torch.tensor, x_lengths: torch.tensor = None, segment_size=4, let_short_samples=False, pad_short=False
+):
     """Create random segments based on the input lengths.
 
     Args:
         x (torch.tensor): Input tensor.
         x_lengths (torch.tensor): Input lengths.
         segment_size (int): Expected output segment size.
+        let_short_samples (bool): Allow shorter samples than the segment size.
+        pad_short (bool): Pad the end of input tensor with zeros if shorter than the segment size.
 
     Shapes:
         - x: :math:`[B, C, T]`
         - x_lengths: :math:`[B]`
     """
+    _x_lenghts = x_lengths.clone()
     B, _, T = x.size()
-    if x_lengths is None:
-        x_lengths = T
-    max_idxs = x_lengths - segment_size + 1
-    assert all(max_idxs > 0), " [!] At least one sample is shorter than the segment size."
-    segment_indices = (torch.rand([B]).type_as(x) * max_idxs).long()
-    ret = segment(x, segment_indices, segment_size)
+    if pad_short:
+        if T < segment_size:
+            x = torch.nn.functional.pad(x, (0, segment_size - T))
+            T = segment_size
+    if _x_lenghts is None:
+        _x_lenghts = T
+    len_diff = _x_lenghts - segment_size
+    if let_short_samples:
+        _x_lenghts[len_diff < 0] = segment_size
+        len_diff = _x_lenghts - segment_size
+    else:
+        assert all(
+            len_diff > 0
+        ), f" [!] At least one sample is shorter than the segment size ({segment_size}). \n {_x_lenghts}"
+    segment_indices = (torch.rand([B]).type_as(x) * (len_diff + 1)).long()
+    ret = segment(x, segment_indices, segment_size, pad_short=pad_short)
     return ret, segment_indices
 
 
@@ -133,10 +158,8 @@ def generate_path(duration, mask):
         - mask: :math:'[B, T_en, T_de]`
         - path: :math:`[B, T_en, T_de]`
     """
-    device = duration.device
     b, t_x, t_y = mask.shape
     cum_duration = torch.cumsum(duration, 1)
-    path = torch.zeros(b, t_x, t_y, dtype=mask.dtype).to(device=device)
 
     cum_duration_flat = cum_duration.view(b * t_x)
     path = sequence_mask(cum_duration_flat, t_y).to(mask.dtype)
@@ -185,7 +208,7 @@ def maximum_path_numpy(value, mask, max_neg_val=None):
     device = value.device
     dtype = value.dtype
     value = value.cpu().detach().numpy()
-    mask = mask.cpu().detach().numpy().astype(np.bool)
+    mask = mask.cpu().detach().numpy().astype(bool)
 
     b, t_x, t_y = value.shape
     direction = np.zeros(value.shape, dtype=np.int64)
@@ -211,3 +234,25 @@ def maximum_path_numpy(value, mask, max_neg_val=None):
     path = path * mask.astype(np.float32)
     path = torch.from_numpy(path).to(device=device, dtype=dtype)
     return path
+
+
+def beta_binomial_prior_distribution(phoneme_count, mel_count, scaling_factor=1.0):
+    P, M = phoneme_count, mel_count
+    x = np.arange(0, P)
+    mel_text_probs = []
+    for i in range(1, M + 1):
+        a, b = scaling_factor * i, scaling_factor * (M + 1 - i)
+        rv = betabinom(P, a, b)
+        mel_i_prob = rv.pmf(x)
+        mel_text_probs.append(mel_i_prob)
+    return np.array(mel_text_probs)
+
+
+def compute_attn_prior(x_len, y_len, scaling_factor=1.0):
+    """Compute attention priors for the alignment network."""
+    attn_prior = beta_binomial_prior_distribution(
+        x_len,
+        y_len,
+        scaling_factor,
+    )
+    return attn_prior  # [y_len, x_len]
